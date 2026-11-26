@@ -142,3 +142,36 @@ jobs:
             --tag "${IMAGE_NAME}:latest" \
             --push \
             .
+  deploy:
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [ self-hosted, devops-vm ]
+
+    permissions:
+      contents: read
+
+    concurrency:
+      group: deploy-devops-vm
+      cancel-in-progress: false
+
+    env:
+      VM_HOST: 192.168.64.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Deploy with Ansible
+        working-directory: ansible
+        run: |
+          source "$HOME/.venvs/ansible-pr11/bin/activate"
+          ansible-playbook site.yml -e "app_tag=$GITHUB_SHA"
+
+      - name: Check through Nginx
+        run: |
+          curl --fail --silent --show-error \
+            --connect-timeout 5 \
+            --max-time 15 \
+            "http://${VM_HOST}/health"
